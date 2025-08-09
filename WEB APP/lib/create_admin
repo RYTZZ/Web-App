@@ -1,0 +1,35 @@
+<?php
+require_once 'db.php';
+require_once 'config.php';
+
+$msg = '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $username = trim($_POST['username']);
+    $password = $_POST['password'];
+    if ($username === '' || $password === '') $msg = 'Fill both fields.';
+    else {
+        $conn = db_connect();
+        $hash = password_hash($password, PASSWORD_DEFAULT);
+        $stmt = $conn->prepare('INSERT INTO admins (username, password_hash) VALUES (?, ?)');
+        $stmt->bind_param('ss', $username, $hash);
+        if ($stmt->execute()) $msg = 'Admin created. Delete this file or restrict access.';
+        else $msg = 'Error: ' . $stmt->error;
+    }
+}
+?>
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Create Admin - <?php echo SITE_NAME;?></title>
+<link rel="stylesheet" href="assets/css/style.css"></head>
+<body>
+<div class="container">
+<h1>Create Admin</h1>
+<?php if ($msg) echo '<div class="alert">'.htmlspecialchars($msg).'</div>'; ?>
+<form method="post">
+<label>Username</label><br><input name="username" required><br>
+<label>Password</label><br><input name="password" type="password" required><br><br>
+<button type="submit">Create Admin</button>
+</form>
+</div>
+</body>
+</html>

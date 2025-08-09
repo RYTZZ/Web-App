@@ -1,0 +1,236 @@
+import os, io, qrcode, secrets
+from datetime import datetime
+from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify
+from flask_sqlalchemy import SQLAlchemy
+from flask_login import LoginManager, login_user, login_required, logout_user, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
+import pandas as pd
+
+from config import Config
+from models import db, Student, Admin, Attendance
+
+app = Flask(__name__)
+app.config.from_object(Config)
+db.init_app(app)
+
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
+
+# helper to separate student/admin in session
+@login_manager.user_loader
+def load_user(user_id):
+    if user_id.startswith("student-"):
+        uid = int(user_id.split('-',1)[1])
+        return Student.query.get(uid)
+    elif user_id.startswith("admin-"):
+        uid = int(user_id.split('-',1)[1])
+        return Admin.query.get(uid)
+    return None
+
+# create DB and a default admin if missing
+@app.before_first_request
+def setup():
+    db.create_all()
+    if not Admin.query.filter_by(username='admin').first():
+        a = Admin(username='admin', password_hash=generate_password_hash('admin123'))
+        db.session.add(a)
+        db.session.commit()
+    os.makedirs(os.path.join('data','qrcodes'), exist_ok=True)
+
+# ROUTES
+
+@app.route('/')
+def index():
+    return redirect(url_for('login'))
+
+@app.route('/login', methods=['GET','POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form['username'].strip()
+        password = request.form['password']
+        # try admin
+        admin = Admin.query.filter_by(username=username).first()
+        if admin and check_password_hash(admin.password_hash, password):
+            login_user(admin)
+            return redirect(url_for('admin_dashboard'))
+        student = Student.query.filter_by(username=username).first()
+        if student and check_password_hash(student.password_hash, password):
+            login_user(student)
+            return redirect(url_for('student_profile'))
+        flash('Invalid credentials', 'danger')
+    return render_template('login.html')
+
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for('login'))
+
+# register a student (admin-only endpoint could be added)
+@app.route('/register_student', methods=['GET','POST'])
+def register_student():
+    if request.method == 'POST':
+        name = request.form['name'].strip()
+        student_id = request.form['student_id'].strip()
+        username = request.form['username'].strip()
+        password = request.form['password']
+        course = request.form.get('course')
+        block = request.form.get('block')
+        if Student.query.filter((Student.username==username)|(Student.student_id==student_id)).first():
+            flash('Username or Student ID already exists', 'danger')
+            return redirect(url_for('register_student'))
+        pw_hash = generate_password_hash(password)
+        student = Student(student_id=student_id, name=name, username=username,
+                          password_hash=pw_hash, course=course, block=block)
+        db.session.add(student)
+        db.session.commit()
+
+        # generate QR (contains URL with token)
+        token = student.qr_token
+        scan_url = url_for('qr_scan_endpoint', token=token, _external=True)
+        img = qrcode.make(scan_url)
+        fname = f"data/qrcodes/{student.id}_{student.student_id}.png"
+        img.save(fname)
+        flash('Student registered and QR generated', 'success')
+        return redirect(url_for('student_profile'))
+    return render_template('register_student.html')
+
+@app.route('/student_profile')
+@login_required
+def student_profile():
+    if not isinstance(current_user, Student):
+        return redirect(url_for('admin_dashboard'))
+    student = current_user
+    qr_path = None
+    potential = os.path.join('data','qrcodes', f"{student.id}_{student.student_id}.png")
+    if os.path.exists(potential):
+        qr_path = potential
+    return render_template('student_profile.html', student=student, qr_path=qr_path)
+
+# QR scan endpoint — this is what the QR encodes
+@app.route('/qr/<token>', methods=['GET'])
+def qr_scan_endpoint(token):
+    # If scanned by phone/browser, redirect to admin scan UI or simply confirm and record
+    student = Student.query.filter_by(qr_token=token).first()
+    if not student:
+        return "Invalid QR", 404
+    # Here we can either return a simple HTML or just mark attendance if a secret query param present.
+    return render_template('scan.html', student_id=student.id, student_name=student.name)
+
+# API for admin scanner (client will POST student_id when QR scanned)
+@app.route('/api/attendance/mark', methods=['POST'])
+def api_mark_attendance():
+    data = request.get_json() or request.form
+    token = data.get('token')
+    student_id = data.get('student_id')
+    # Accept either token or id
+    if token:
+        student = Student.query.filter_by(qr_token=token).first()
+    elif student_id:
+        student = Student.query.get(int(student_id))
+    else:
+        return jsonify({'status':'error','msg':'no token or id provided'}), 400
+    if not student:
+        return jsonify({'status':'error','msg':'student not found'}), 404
+    att = Attendance(student_id=student.id, course=student.course, block=student.block)
+    db.session.add(att)
+    db.session.commit()
+    return jsonify({'status':'ok','student':student.name,'timestamp':att.timestamp.isoformat()})
+
+# Admin dashboard
+@app.route('/admin')
+@login_required
+def admin_dashboard():
+    if not isinstance(current_user, Admin):
+        return redirect(url_for('student_profile'))
+    # totals and small stats
+    total_students = Student.query.count()
+    total_attendance_today = Attendance.query.filter(
+        Attendance.timestamp >= datetime.utcnow().date()
+    ).count()
+    # fetch counts per course or block
+    courses = db.session.query(Student.course, db.func.count(Student.id)).group_by(Student.course).all()
+    blocks = db.session.query(Student.block, db.func.count(Student.id)).group_by(Student.block).all()
+    return render_template('admin_dashboard.html', total_students=total_students,
+                           total_attendance_today=total_attendance_today,
+                           courses=courses, blocks=blocks)
+
+# API for attendance stats used by Chart.js
+@app.route('/api/attendance/stats')
+@login_required
+def api_attendance_stats():
+    # return counts per day for last N days
+    import datetime
+    days = 14
+    labels = []
+    counts = []
+    for i in range(days-1, -1, -1):
+        day = datetime.date.today() - datetime.timedelta(days=i)
+        count = Attendance.query.filter(
+            db.func.date(Attendance.timestamp) == day
+        ).count()
+        labels.append(day.isoformat())
+        counts.append(count)
+    return jsonify({'labels': labels, 'counts': counts})
+
+# list students by course/block
+@app.route('/students')
+@login_required
+def students_list():
+    course = request.args.get('course')
+    block = request.args.get('block')
+    q = Student.query
+    if course:
+        q = q.filter_by(course=course)
+    if block:
+        q = q.filter_by(block=block)
+    students = q.all()
+    return render_template('students_list.html', students=students)
+
+# Export attendance to Excel
+@app.route('/export/excel')
+@login_required
+def export_excel():
+    from io import BytesIO
+    records = db.session.query(Attendance, Student).join(Student, Attendance.student_id==Student.id).all()
+    rows = []
+    for att, stud in records:
+        rows.append({
+            'timestamp': att.timestamp,
+            'student_id': stud.student_id,
+            'name': stud.name,
+            'course': att.course,
+            'block': att.block,
+            'mode': att.mode
+        })
+    df = pd.DataFrame(rows)
+    buf = BytesIO()
+    df.to_excel(buf, index=False, engine='openpyxl')
+    buf.seek(0)
+    return send_file(buf, download_name='attendance.xlsx', as_attachment=True)
+
+# (Optional) Export to Google Sheets (requires service account JSON and gspread configured)
+@app.route('/export/google_sheets')
+@login_required
+def export_gsheets():
+    from google.oauth2.service_account import Credentials
+    import gspread
+    fname = app.config['GSPREAD_SERVICE_ACCOUNT_FILE']
+    sheet_name = app.config['GSPREAD_SHEET_NAME']
+    if not fname or not os.path.exists(fname):
+        return "Service account file not configured on server", 500
+    creds = Credentials.from_service_account_file(fname, scopes=["https://www.googleapis.com/auth/spreadsheets"])
+    gc = gspread.authorize(creds)
+    sh = gc.open(sheet_name)
+    worksheet = sh.sheet1
+    records = db.session.query(Attendance, Student).join(Student, Attendance.student_id==Student.id).all()
+    data = [['timestamp','student_id','name','course','block','mode']]
+    for att, stud in records:
+        data.append([att.timestamp.isoformat(), stud.student_id, stud.name, att.course, att.block, att.mode])
+    worksheet.clear()
+    worksheet.update('A1', data)
+    return "Pushed to Google Sheets"
+
+if __name__ == '__main__':
+    app.run(debug=True)

@@ -1,0 +1,63 @@
+<?php
+session_start();
+require_once 'db.php';
+require_once 'config.php';
+
+if (!isset($_SESSION['user_type']) || $_SESSION['user_type'] !== 'admin') {
+    header('Location: index.php'); exit;
+}
+
+$conn = db_connect();
+$total_students = $conn->query('SELECT COUNT(*) AS c FROM students')->fetch_assoc()['c'];
+$today = date('Y-m-d') . ' 00:00:00';
+$stmt = $conn->prepare('SELECT COUNT(*) AS c FROM attendance WHERE timestamp >= ?');
+$stmt->bind_param('s', $today); $stmt->execute();
+$today_cnt = $stmt->get_result()->fetch_assoc()['c'];
+?>
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Admin - <?php echo SITE_NAME;?></title>
+<link rel="stylesheet" href="assets/css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/minified/html5-qrcode.min.js"></script>
+</head><body>
+<div class="container">
+  <h1>Admin Dashboard — <?php echo SITE_NAME; ?></h1>
+  <div class="toplinks">
+    <a href="register_student.php">Register Student</a> |
+    <a href="students_list.php">Students</a> |
+    <a href="export_csv.php">Export CSV</a> |
+    <a href="logout.php">Logout</a>
+  </div>
+  <p>Total students: <?php echo $total_students; ?> | Attendance today: <?php echo $today_cnt; ?></p>
+
+  <h3>Attendance (last 14 days)</h3>
+  <canvas id="attChart" width="800" height="220"></canvas>
+
+  <h3>QR Scanner</h3>
+  <div id="reader" style="width:320px"></div>
+
+</div>
+
+<script>
+fetch('attendance_stats.php').then(r=>r.json()).then(data=>{
+  const ctx = document.getElementById('attChart').getContext('2d');
+  new Chart(ctx, { type:'line', data:{ labels:data.labels, datasets:[{ label:'Attendance', data:data.counts, fill:false }] } });
+});
+
+// Scanner
+function onScanSuccess(decodedText, decodedResult) {
+  try {
+    const u = new URL(decodedText);
+    const token = u.searchParams.get('token') || u.pathname.split('/').pop();
+    fetch('mark_attendance.php', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({token: token}) })
+      .then(r=>r.json()).then(j=>alert(JSON.stringify(j)));
+  } catch(e) {
+    fetch('mark_attendance.php', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({student_id: decodedText}) })
+      .then(r=>r.json()).then(j=>alert(JSON.stringify(j)));
+  }
+}
+
+var html5QrcodeScanner = new Html5QrcodeScanner('reader', { fps: 10, qrbox: 250 });
+html5QrcodeScanner.render(onScanSuccess);
+</script>
+</body></html>

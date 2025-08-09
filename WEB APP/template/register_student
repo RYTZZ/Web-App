@@ -1,0 +1,21 @@
+<!doctype html>
+<html>
+
+<head>
+    <title>Register Student</title>
+</head>
+
+<body>
+    <h2>Register Student</h2>
+    <form method="post">
+        <input name="name" placeholder="Full name" required><br>
+        <input name="student_id" placeholder="Student ID" required><br>
+        <input name="username" placeholder="Username" required><br>
+        <input name="password" type="password" placeholder="Password" required><br>
+        <input name="course" placeholder="Course"><br>
+        <input name="block" placeholder="Block"><br>
+        <button type="submit">Register & Generate QR</button>
+    </form>
+</body>
+
+</html>

@@ -1,0 +1,57 @@
+<?php
+session_start();
+require_once 'db.php';
+require_once 'config.php';
+if (!isset($_SESSION['user_type']) || $_SESSION['user_type'] !== 'admin') { header('Location: index.php'); exit; }
+$conn = db_connect();
+
+$course = isset($_GET['course']) ? $_GET['course'] : '';
+$block = isset($_GET['block']) ? $_GET['block'] : '';
+
+$sql = 'SELECT * FROM students WHERE 1=1';
+$params = []; $types = '';
+if ($course !== '') { $sql .= ' AND course = ?'; $types .= 's'; $params[] = $course; }
+if ($block !== '') { $sql .= ' AND block = ?'; $types .= 's'; $params[] = $block; }
+
+$stmt = $conn->prepare($sql);
+if (!empty($params)) $stmt->bind_param($types, ...$params);
+$stmt->execute();
+$res = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+
+$course_rows = $conn->query('SELECT DISTINCT course FROM students')->fetch_all(MYSQLI_ASSOC);
+$block_rows = $conn->query('SELECT DISTINCT block FROM students')->fetch_all(MYSQLI_ASSOC);
+?>
+<!doctype html><html><head><meta charset="utf-8"><title>Students - <?php echo SITE_NAME;?></title>
+<link rel="stylesheet" href="assets/css/style.css"></head><body>
+<div class="container">
+<h1>Students</h1>
+<p><a href="admin_dashboard.php">Back to dashboard</a></p>
+<form method="get">
+  <label>Course</label>
+  <select name="course"><option value="">-- All --</option>
+    <?php foreach($course_rows as $r): ?>
+      <option value="<?php echo htmlspecialchars($r['course']);?>" <?php if($r['course']==$course) echo 'selected'; ?>><?php echo htmlspecialchars($r['course']);?></option>
+    <?php endforeach; ?>
+  </select>
+  <label>Block</label>
+  <select name="block"><option value="">-- All --</option>
+    <?php foreach($block_rows as $r): ?>
+      <option value="<?php echo htmlspecialchars($r['block']);?>" <?php if($r['block']==$block) echo 'selected'; ?>><?php echo htmlspecialchars($r['block']);?></option>
+    <?php endforeach; ?>
+  </select>
+  <button type="submit">Filter</button>
+</form>
+
+<table class="table"><tr><th>ID</th><th>Student ID</th><th>Name</th><th>Course</th><th>Block</th><th>QR</th></tr>
+<?php foreach($res as $row): ?>
+<tr>
+<td><?php echo $row['id'];?></td>
+<td><?php echo htmlspecialchars($row['student_id']);?></td>
+<td><?php echo htmlspecialchars($row['name']);?></td>
+<td><?php echo htmlspecialchars($row['course']);?></td>
+<td><?php echo htmlspecialchars($row['block']);?></td>
+<td><a href="qr.php?token=<?php echo urlencode($row['qr_token']);?>" target="_blank">View QR</a></td>
+</tr>
+<?php endforeach; ?>
+</table>
+</div></body></html>

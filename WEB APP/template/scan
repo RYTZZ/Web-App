@@ -1,0 +1,13 @@
+<!doctype html>
+<html>
+
+<head>
+    <title>Scanned</title>
+</head>
+
+<body>
+    <h3>Scanned student: {{ student_name }}</h3>
+    <p>If you scanned from the admin scanner, the attendance is recorded.</p>
+</body>
+
+</html>

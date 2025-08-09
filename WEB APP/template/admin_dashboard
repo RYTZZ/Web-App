@@ -1,0 +1,65 @@
+<!doctype html>
+<html>
+
+<head>
+    <title>Admin Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/minified/html5-qrcode.min.js"></script>
+</head>
+
+<body>
+    <h1>Admin</h1>
+    <p>Total students: {{ total_students }}</p>
+    <p>Attendance today: {{ total_attendance_today }}</p>
+
+    <h3>Attendance graph (last 14 days)</h3>
+    <canvas id="attChart"></canvas>
+
+    <h3>Scanner</h3>
+    <div id="reader" style="width:300px"></div>
+
+    <p><a href="{{ url_for('export_excel') }}">Export Excel</a></p>
+    <p><a href="{{ url_for('export_gsheets') }}">Export to Google Sheets</a></p>
+
+    <script>
+        // load chart data
+        fetch('/api/attendance/stats').then(r => r.json()).then(data => {
+            const ctx = document.getElementById('attChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'line',
+                data: { labels: data.labels, datasets: [{ label: 'Attendance', data: data.counts }] }
+            });
+        });
+
+        // html5-qrcode scanner
+        const onScanSuccess = (decodedText, decodedResult) => {
+            console.log('decoded', decodedText);
+            // If QR encodes the /qr/<token> URL, you can extract token from the URL.
+            // For simplicity, if the QR encodes a full URL like https://.../qr/<token>,
+            // parse token:
+            try {
+                const u = new URL(decodedText);
+                const parts = u.pathname.split('/');
+                const token = parts[parts.length - 1];
+                fetch('/api/attendance/mark', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token: token })
+                }).then(r => r.json()).then(j => alert(JSON.stringify(j)));
+            } catch (e) {
+                // not a URL: maybe it's student_id directly
+                fetch('/api/attendance/mark', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ student_id: decodedText })
+                }).then(r => r.json()).then(j => alert(JSON.stringify(j)));
+            }
+        };
+
+        var html5QrcodeScanner = new Html5QrcodeScanner(
+            "reader", { fps: 10, qrbox: 250 });
+        html5QrcodeScanner.render(onScanSuccess);
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,15 @@
+<?php
+require_once 'db.php';
+$conn = db_connect();
+$days = 14;
+$labels = []; $counts = [];
+for ($i = $days-1; $i >= 0; $i--) {
+    $d = date('Y-m-d', strtotime("-$i days"));
+    $labels[] = $d;
+    $stmt = $conn->prepare('SELECT COUNT(*) AS c FROM attendance WHERE DATE(timestamp) = ?');
+    $stmt->bind_param('s', $d); $stmt->execute();
+    $c = $stmt->get_result()->fetch_assoc()['c'];
+    $counts[] = (int)$c;
+}
+header('Content-Type: application/json');
+echo json_encode(['labels'=>$labels,'counts'=>$counts]);

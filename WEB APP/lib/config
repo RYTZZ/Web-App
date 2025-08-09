@@ -1,0 +1,9 @@
+<?php
+// config.php
+define('DB_HOST', getenv('DB_HOST') ?: '127.0.0.1');
+define('DB_USER', getenv('DB_USER') ?: 'kaagapay_user');
+define('DB_PASS', getenv('DB_PASS') ?: 'kaagapay_pass');
+define('DB_NAME', getenv('DB_NAME') ?: 'kaagapay_db');
+
+define('SITE_NAME', 'KAAGAPAY NSTP VOLUNTEERS BULAN CAMPUS.');
+?>

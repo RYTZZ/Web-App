@@ -1,0 +1,13 @@
+<?php
+session_start();
+require_once 'db.php';
+if (!isset($_SESSION['user_type']) || $_SESSION['user_type'] !== 'admin') { header('Location: index.php'); exit; }
+$conn = db_connect();
+$res = $conn->query('SELECT a.id, a.timestamp, s.student_id, s.name, a.course, a.block, a.mode FROM attendance a JOIN students s ON a.student_id = s.id ORDER BY a.timestamp DESC');
+header('Content-Type: text/csv');
+header('Content-Disposition: attachment; filename="attendance_export.csv";');
+$out = fopen('php://output', 'w');
+fputcsv($out, ['id','timestamp','student_id','name','course','block','mode']);
+while ($row = $res->fetch_assoc()) fputcsv($out, $row);
+fclose($out);
+exit;
