@@ -1,0 +1,70 @@
+body { 
+  font-family: 'Poppins', sans-serif; 
+  background: #020086; 
+  margin: 0; 
+}
+
+.login-container { 
+  width: 400px; 
+  margin: 100px auto; 
+  padding: 50px; 
+  background: #ffffff; 
+  border-radius: 20px; 
+  box-shadow: 0 0 20px rgba(0,0,0,0.1); 
+  text-align: center;   /* ✅ Center all child elements */
+}
+
+.logo { 
+  width: 100px; 
+  display: block; 
+  margin: 0 auto 20px; 
+}
+
+h1 {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 20px 0 30px 0;
+  line-height: 1.4;
+  color: #020086;
+}
+
+input { 
+  width: 80%;                /* wider so it looks centered */
+  padding: 10px; 
+  margin: 10px auto;         /* auto margin to center */
+  border: 2px solid #a10000; 
+  border-radius: 10px; 
+  font-family: 'Poppins', sans-serif;
+  display: block;            /* ✅ ensures centering works */
+}
+
+button { 
+  background: #ae7100; 
+  color: #a10000; 
+  padding: 10px; 
+  border: none; 
+  border-radius: 10px; 
+  cursor: pointer; 
+  width: 60%;                /* slightly smaller for balance */
+  font-family: 'Poppins', sans-serif;
+  font-weight: 600;
+  margin: 20px auto;         /* space above/below */
+  display: block;            /* ✅ centers button */
+}
+
+button:hover { 
+  background: #218838; 
+  color: #fff;
+}
+
+a {
+  display: block;            /* ✅ puts link on its own line */
+  margin-top: 15px;
+  color: #020086;
+  font-size: 14px;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
